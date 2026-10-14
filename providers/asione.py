@@ -75,8 +75,7 @@ class ASIOneProviderImpl(llm.AIProvider):
             llm._log_chat_completion(self._name, self._model_name, response)
             if not raw:
                 logger.warning("LLM returned an empty response")
-                if finish_reason == "length":
-                    raw = llm._llm_empty_response_command()
+            raw = llm._reply_or_limit_notice(content, raw, finish_reason == "length")
             resp = self._clean_text(raw)
             return resp
         except Exception as e:
