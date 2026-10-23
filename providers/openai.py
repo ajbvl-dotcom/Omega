@@ -62,8 +62,7 @@ class OpenAIProviderImpl(llm.AIProvider):
             llm._log_responses_completion(self._name, self._model_name, response)
             if not raw:
                 logger.warning("LLM returned an empty response")
-                if incomplete_reason == "max_output_tokens":
-                    raw = llm._llm_empty_response_command()
+            raw = llm._reply_or_limit_notice(content, raw, incomplete_reason == "max_output_tokens")
             return self._clean_text(raw)
         except Exception as e:
             logger.exception(f"[OpenAIProviderImpl.chat]: Exception while communicating with LLM: {e}")

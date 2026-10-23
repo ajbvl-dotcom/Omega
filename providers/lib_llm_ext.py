@@ -2,7 +2,7 @@ import os, hashlib
 import openai
 from typing import Optional, Tuple, Dict, Any
 from config import config_get_by_key
-from src.helper import quote_arg
+from src.helper import quote_arg, split_command_blocks
 from src.logger import get_logger
 
 PROMPT_DELIMITER = ":-:-:-:"
@@ -20,6 +20,7 @@ LLM_EMPTY_RESPONSE_MESSAGE = (
     "reasoning and the final answer draw from the same token limit, so higher "
     "reasoning levels need a higher token limit."
 )
+_limit_notice_pending = False
 
 
 logger = get_logger(__name__)
@@ -66,6 +67,28 @@ def _llm_empty_response_command() -> str:
     spends the entire output token budget on reasoning and returns no content.
     """
     return f"(send {quote_arg(LLM_EMPTY_RESPONSE_MESSAGE)})"
+
+def _sends_to_user(raw: str) -> bool:
+    text = raw.replace("_quote_", '"').replace("_newline_", "\n")
+    for block in split_command_blocks(text):
+        command = block.lstrip().lstrip("(").split(maxsplit=1)
+        if command and command[0].rstrip(")") == "send":
+            return True
+    return False
+
+def _reply_or_limit_notice(content: str, raw: str, cut_by_limit: bool) -> str:
+    global _limit_notice_pending
+    _, usermsg = _split_system_user(content)
+    if "HUMAN-MSG:" in usermsg:
+        _limit_notice_pending = True
+    if raw:
+        if _sends_to_user(raw):
+            _limit_notice_pending = False
+        return raw
+    if cut_by_limit and _limit_notice_pending:
+        _limit_notice_pending = False
+        return _llm_empty_response_command()
+    return raw
 
 def _split_system_user(content: str) -> Tuple[str, str]:
     """
@@ -188,8 +211,7 @@ class AIProvider(AbstractAIProvider):
             _log_chat_completion(self._name, self._model_name, response)
             if not raw:
                 logger.warning("LLM returned an empty response")
-                if finish_reason == "length":
-                    raw = _llm_empty_response_command()
+            raw = _reply_or_limit_notice(content, raw, finish_reason == "length")
             resp = self._clean_text(raw)
             return resp
         except Exception as e:

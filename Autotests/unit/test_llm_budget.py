@@ -55,7 +55,13 @@ openrouter = _MODULES["openrouter"]
 openai_provider = _MODULES["openai_provider"]
 asione = _MODULES["asione"]
 
-PROMPT = "You are an agent. :-:-:-: Write an empty line to /tmp/paths.txt"
+PROMPT = "You are an agent. :-:-:-: (HUMAN-MSG: Write an empty line to /tmp/paths.txt)"
+IDLE_PROMPT = "You are an agent. :-:-:-: "
+
+
+@pytest.fixture(autouse=True)
+def no_pending_limit_notice():
+    llm._limit_notice_pending = False
 
 
 def chat_response(content, finish_reason, completion_tokens=6000, reasoning_tokens=6000):
@@ -154,6 +160,45 @@ def test_openai_empty_reply_without_incomplete_reason_returns_empty(caplog):
 def test_asione_empty_reply_out_of_budget_is_explained():
     create = FakeCreate(chat_response("", "length"))
     assert sent_text(make_asione(create).chat(PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+
+
+@pytest.mark.parametrize("make, response", [
+    (make_openrouter, lambda: chat_response("", "length")),
+    (make_asione, lambda: chat_response("", "length")),
+    (make_openai, lambda: responses_response("", "incomplete", "max_output_tokens")),
+])
+@pytest.mark.parametrize("prompt", [IDLE_PROMPT, "You are an agent. :-:-:-:  DO NOT RE-SEND OR SPAM!"])
+def test_empty_reply_out_of_budget_without_a_user_message_sends_nothing(make, response, prompt):
+    assert make(FakeCreate(response())).chat(prompt) == ""
+
+
+def test_limit_notice_comes_once_after_a_step_without_an_answer():
+    provider = make_openrouter(FakeCreate(
+        chat_response('(query "hash maps")', "length"),
+        chat_response("", "length"),
+        chat_response("", "length"),
+    ))
+    assert provider.chat(PROMPT) == '(query "hash maps")'
+    assert sent_text(provider.chat(IDLE_PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert provider.chat(IDLE_PROMPT) == ""
+
+
+@pytest.mark.parametrize("answer", ['(send "hi")', 'send "hi"', 'Sure.\nsend "hi"', '(query "x")\n(send "hi")'])
+def test_limit_notice_is_skipped_once_the_user_got_an_answer(answer):
+    provider = make_openrouter(FakeCreate(
+        chat_response(answer, "stop"),
+        chat_response("", "length"),
+    ))
+    assert provider.chat(PROMPT) == answer
+    assert provider.chat(IDLE_PROMPT) == ""
+
+
+def test_every_user_message_cut_by_the_limit_gets_its_own_notice():
+    provider = make_openrouter(FakeCreate(*(chat_response("", "length") for _ in range(4))))
+    assert sent_text(provider.chat(PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert provider.chat(IDLE_PROMPT) == ""
+    assert sent_text(provider.chat(PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert provider.chat(IDLE_PROMPT) == ""
 
 
 @pytest.mark.parametrize("effort, max_tokens, want_budget, want_enabled", [
