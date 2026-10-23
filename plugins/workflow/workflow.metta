@@ -139,6 +139,13 @@
        (remove-prompt-extension workflows-available)
        (add-prompt-extension workflows-available $text))))
 
+;; re-reads available workflows into the prompt
+(= (workflow-refresh-list)
+   (let $text (join (newline) (cons-atom "Available workflows: " (workflow-list-available)))
+     (progn
+       (remove-prompt-extension workflows-available)
+       (add-prompt-extension workflows-available $text))))
+
 ;; collects workflow description from description.txt
 (= (collect-description () $base $acc) $acc)
 (= (collect-description (cons $first $tail) $base $acc)
