@@ -51,7 +51,7 @@
 (= (add-skill $function $description $arguments)
    (let $text (strings-concat ("- " $description ": " $function " " (join " " $arguments)))
      (progn
-       (py-call (helper.add_llm_command $function))
+       (py-call (helper.add_llm_command $function $description $arguments))
        (log INFO "skills" (strings-concat ("Add skill: " $text)))
        (add-atom &self (= (dynamic-skill $function) $text)))))
 

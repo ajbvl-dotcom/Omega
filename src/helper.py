@@ -41,12 +41,17 @@ TWO_ARG_COMMANDS = {
 }
 
 
-def add_llm_command(command):
+def add_llm_command(command, description=None, arguments=None):
+    if arguments is not None:
+        import providers
+        providers.register_skill(command, description, arguments)
     LLM_COMMANDS.add(str(command))
     return True
 
 
 def remove_llm_command(command):
+    import providers
+    providers.remove_skill(command)
     command = str(command)
     if command not in STATIC_LLM_COMMANDS:
         LLM_COMMANDS.discard(command)
