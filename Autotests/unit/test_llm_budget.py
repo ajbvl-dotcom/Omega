@@ -1,6 +1,5 @@
 """Unit tests for LLM token-budget handling in providers/ (no container, network or token)."""
 import importlib.util
-import json
 import logging
 import os
 import sys
@@ -118,13 +117,6 @@ def make_asione(create):
     return provider
 
 
-def sent_text(reply):
-    """Text of a single `(send "...")` command, or None if reply is not one."""
-    if not (reply.startswith("(send ") and reply.endswith(")")):
-        return None
-    return json.loads(reply[len("(send "):-1])
-
-
 def swallowed_errors(caplog):
     return [r for r in caplog.records if r.exc_info]
 
@@ -137,7 +129,7 @@ def test_normal_reply_is_returned_after_a_single_call():
 
 def test_empty_reply_out_of_budget_is_explained():
     create = FakeCreate(chat_response("", "length"))
-    assert sent_text(make_openrouter(create).chat(PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert make_openrouter(create).chat(PROMPT) == llm.LLM_OUTPUT_LIMIT_MARKER
 
 
 def test_empty_reply_with_stop_is_not_blamed_on_the_budget(caplog):
@@ -148,7 +140,7 @@ def test_empty_reply_with_stop_is_not_blamed_on_the_budget(caplog):
 
 def test_openai_empty_reply_out_of_budget_is_explained():
     create = FakeCreate(responses_response("", "incomplete", "max_output_tokens"))
-    assert sent_text(make_openai(create).chat(PROMPT, max_tokens=120)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert make_openai(create).chat(PROMPT, max_tokens=120) == llm.LLM_OUTPUT_LIMIT_MARKER
 
 
 def test_openai_empty_reply_without_incomplete_reason_returns_empty(caplog):
@@ -159,7 +151,7 @@ def test_openai_empty_reply_without_incomplete_reason_returns_empty(caplog):
 
 def test_asione_empty_reply_out_of_budget_is_explained():
     create = FakeCreate(chat_response("", "length"))
-    assert sent_text(make_asione(create).chat(PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert make_asione(create).chat(PROMPT) == llm.LLM_OUTPUT_LIMIT_MARKER
 
 
 @pytest.mark.parametrize("make, response", [
@@ -179,7 +171,7 @@ def test_limit_notice_comes_once_after_a_step_without_an_answer():
         chat_response("", "length"),
     ))
     assert provider.chat(PROMPT) == '(query "hash maps")'
-    assert sent_text(provider.chat(IDLE_PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert provider.chat(IDLE_PROMPT) == llm.LLM_OUTPUT_LIMIT_MARKER
     assert provider.chat(IDLE_PROMPT) == ""
 
 
@@ -195,9 +187,9 @@ def test_limit_notice_is_skipped_once_the_user_got_an_answer(answer):
 
 def test_every_user_message_cut_by_the_limit_gets_its_own_notice():
     provider = make_openrouter(FakeCreate(*(chat_response("", "length") for _ in range(4))))
-    assert sent_text(provider.chat(PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert provider.chat(PROMPT) == llm.LLM_OUTPUT_LIMIT_MARKER
     assert provider.chat(IDLE_PROMPT) == ""
-    assert sent_text(provider.chat(PROMPT)) == llm.LLM_EMPTY_RESPONSE_MESSAGE
+    assert provider.chat(PROMPT) == llm.LLM_OUTPUT_LIMIT_MARKER
     assert provider.chat(IDLE_PROMPT) == ""
 
 

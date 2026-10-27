@@ -2,7 +2,7 @@ import os, hashlib
 import openai
 from typing import Optional, Tuple, Dict, Any
 from config import config_get_by_key
-from src.helper import quote_arg, split_command_blocks
+from src.helper import split_command_blocks
 from src.logger import get_logger
 
 PROMPT_DELIMITER = ":-:-:-:"
@@ -20,6 +20,7 @@ LLM_EMPTY_RESPONSE_MESSAGE = (
     "reasoning and the final answer draw from the same token limit, so higher "
     "reasoning levels need a higher token limit."
 )
+LLM_OUTPUT_LIMIT_MARKER = "LLM_MAX_OUTPUT_TOKENS_REACHED"
 _limit_notice_pending = False
 
 
@@ -62,12 +63,6 @@ def _log_responses_completion(provider: str, model: str, response) -> None:
     )
     logger.info(line)
 
-def _llm_empty_response_command() -> str:
-    """Return an explanatory message as a MeTTa `send` command when the LLM
-    spends the entire output token budget on reasoning and returns no content.
-    """
-    return f"(send {quote_arg(LLM_EMPTY_RESPONSE_MESSAGE)})"
-
 def _sends_to_user(raw: str) -> bool:
     text = raw.replace("_quote_", '"').replace("_newline_", "\n")
     for block in split_command_blocks(text):
@@ -87,8 +82,11 @@ def _reply_or_limit_notice(content: str, raw: str, cut_by_limit: bool) -> str:
         return raw
     if cut_by_limit and _limit_notice_pending:
         _limit_notice_pending = False
-        return _llm_empty_response_command()
+        return LLM_OUTPUT_LIMIT_MARKER
     return raw
+
+def llmLimitNotice(response: str) -> str:
+    return LLM_EMPTY_RESPONSE_MESSAGE if response == LLM_OUTPUT_LIMIT_MARKER else ""
 
 def _split_system_user(content: str) -> Tuple[str, str]:
     """
